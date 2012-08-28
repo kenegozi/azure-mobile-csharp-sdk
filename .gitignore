@@ -2,5 +2,14 @@
 bin
 obj
 
-# mstest test results
-TestResults
+# vs
+*.suo
+
+
+# nugets
+src/packages/
+package/
+*.nupkg
+
+#resharper
+_ReSharper*
