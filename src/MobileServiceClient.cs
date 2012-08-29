@@ -12,6 +12,7 @@
 //    limitations under the License.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -116,6 +117,21 @@ namespace MobileServices.Sdk {
 			});
 		}
 
+		public void Delete(string table, object id, Action<Exception> continuation) {
+			var tableUrl = serviceUrl + "tables/" + table + "/" + id.ToString();
+			var client = new WebClient();
+			client.UploadStringCompleted += (x, args) => {
+				if (args.Error != null) {
+					continuation(args.Error);
+					return;
+				}
+				continuation(null);
+			};
+
+			SetMobileServiceHeaders(client);
+			client.UploadStringAsync(new Uri(tableUrl), "DELETE", "");
+		}
+
 		void Read(string table, Action<string, Exception> continuation) {
 			var tableUrl = serviceUrl + "tables/" + table;
 			var client = new WebClient();
@@ -126,7 +142,7 @@ namespace MobileServices.Sdk {
 				}
 				continuation(args.Result, null);
 			};
-			client.Headers["X-ZUMO-AUTH"] = CurrentAuthToken;
+			SetMobileServiceHeaders(client);
 			client.DownloadStringAsync(new Uri(tableUrl));
 		}
 
@@ -140,7 +156,7 @@ namespace MobileServices.Sdk {
 				}
 				continuation(args.Result, null);
 			};
-			client.Headers["X-ZUMO-AUTH"] = CurrentAuthToken;
+			SetMobileServiceHeaders(client);
 			var jobject = item as JObject;
 
 			if (jobject == null) {
@@ -153,6 +169,69 @@ namespace MobileServices.Sdk {
 			}
 			jobject.Remove("id");
 			client.UploadStringAsync(new Uri(tableUrl), jobject.ToString());
+		}
+
+		private void SetMobileServiceHeaders(WebClient client) {
+			if (CurrentAuthToken != null) {
+				client.Headers["X-ZUMO-AUTH"] = CurrentAuthToken;
+			}
+			if (applicationKey != null) {
+				client.Headers["X-ZUMO-APPLICATION"] = applicationKey;
+			}
+		}
+	}
+
+	public class MobileServiceQuery {
+		private int top;
+		private int skip;
+		private string orderby;
+		private string filter;
+		private string select;
+
+		public MobileServiceQuery Top(int top) {
+			this.top = top;
+			return this;
+		}
+
+		public MobileServiceQuery Skip(int skip) {
+			this.skip = skip;
+			return this;
+		}
+
+		public MobileServiceQuery OrderBy(string orderby) {
+			this.orderby = orderby;
+			return this;
+		}
+
+		public MobileServiceQuery Filter(string filter) {
+			this.filter = filter;
+			return this;
+		}
+
+		public MobileServiceQuery Select(string select) {
+			this.select = select;
+			return this;
+		}
+
+		public override string ToString() {
+			var query = new List<string>();
+			if (top != 0) {
+				query.Add("$top=" + top);
+			}
+			if (skip != 0) {
+				query.Add("$skip=" + skip);
+			}
+			if (!string.IsNullOrEmpty(filter)) {
+				query.Add("$filter=" + filter);
+			}
+			if (!string.IsNullOrEmpty(select)) {
+				query.Add("$select=" + select);
+			}
+			if (!string.IsNullOrEmpty(orderby)) {
+				query.Add("$orderby=" + orderby);
+			}
+
+			return string.Join("&", query);
 		}
 	}
 }
