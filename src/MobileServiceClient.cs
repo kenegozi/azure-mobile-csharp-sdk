@@ -13,8 +13,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
@@ -138,6 +140,32 @@ namespace MobileServices.Sdk {
 
 			SetMobileServiceHeaders(client);
 			client.UploadStringAsync(new Uri(tableUrl), "DELETE", "");
+		}
+
+		public void Update(string table, JObject updates, Action<Exception> continuation) {
+			JToken idToken;
+
+			if (updates.TryGetValue("id", out idToken) == false) {
+				throw new Exception("missing [id] field");
+			}
+
+			var id = idToken.Value<object>().ToString();
+			var tableUrl = serviceUrl + "tables/" + table + "/" + id;
+			var client = new WebClient();
+			client.UploadStringCompleted += (x, args) => {
+				if (args.Error != null) {
+					continuation(args.Error);
+					return;
+				}
+				continuation(null);
+			};
+
+			SetMobileServiceHeaders(client);
+			var payload = new StringBuilder();
+			using (var writer = new StringWriter(payload))
+				Serializer.Serialize(writer, updates);
+
+			client.UploadStringAsync(new Uri(tableUrl), "PATCH", payload.ToString());
 		}
 
 		void Read(string table, MobileServiceQuery query, Action<string, Exception> continuation) {
