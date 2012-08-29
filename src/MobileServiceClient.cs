@@ -14,6 +14,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using Newtonsoft.Json;
@@ -160,14 +161,20 @@ namespace MobileServices.Sdk {
 			var jobject = item as JObject;
 
 			if (jobject == null) {
-				var body = new StringBuilder();
-				using (var writer = new StringWriter(body)) {
-					Serializer.Serialize(writer, item);
-				}
-
-				jobject = JObject.Parse(body.ToString());
+				jobject = JObject.FromObject(item, Serializer);
 			}
 			jobject.Remove("id");
+
+			var nullProperties = jobject.Properties().Where(p => p.Value.Type == JTokenType.Null).ToArray();
+			foreach (var nullProperty in nullProperties) {
+				jobject.Remove(nullProperty.Name);
+			}
+
+			foreach (JProperty prop in jobject.Properties()) {
+				if (prop.Value.Type == JTokenType.Date) {
+					prop.Value = prop.Value.ToObject<DateTime>().ToUniversalTime();
+				}
+			}
 			client.UploadStringAsync(new Uri(tableUrl), jobject.ToString());
 		}
 
