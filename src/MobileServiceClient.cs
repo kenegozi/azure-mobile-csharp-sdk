@@ -13,6 +13,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -194,9 +195,9 @@ namespace MobileServices.Sdk {
 			var endpointUrl = serviceUrl + relativeUrl;
 			var client = new WebClient();
 			client.UploadStringCompleted += (x, args) =>
-				OperationCompleted(args.Result, args.Error, continuation);
+				OperationCompleted(args, continuation);
 			client.DownloadStringCompleted += (x, args) =>
-				OperationCompleted(args.Result, args.Error, continuation);
+				OperationCompleted(args, continuation);
 			SetMobileServiceHeaders(client);
 			if (method == "GET") {
 				client.DownloadStringAsync(new Uri(endpointUrl));
@@ -213,12 +214,40 @@ namespace MobileServices.Sdk {
 			client.UploadStringAsync(new Uri(endpointUrl), method, payloadString);
 		}
 
-		void OperationCompleted(string result, Exception err, Action<string, Exception> continuation) {
-			if (err == null) {
-				continuation(result, null);
+		void OperationCompleted(AsyncCompletedEventArgs args, Action<string, Exception> continuation) {
+			if (args.Error != null) {
+				var ex = args.Error;
+				var webException = ex as WebException;
+				if (webException != null) {
+					var response = webException.Response as HttpWebResponse;
+					if (response != null) {
+						var code = response.StatusCode;
+						var msg = response.StatusDescription;
+						try {
+							using (var reader = new StreamReader(response.GetResponseStream())) {
+								msg += "\r\n" + reader.ReadToEnd();
+							}
+						}
+						catch (Exception) {
+							msg += "\r\nResponse body could not be extracted";
+						}
+						ex = new Exception(string.Format("Http error [{0}] - {1}", (int)code, msg), ex);
+					}
+				}
+				continuation(null, ex);
 				return;
 			}
-			continuation(null, err);
+			string result = null;
+			var uploadStringCompletedEventArgs = args as UploadStringCompletedEventArgs;
+			if (uploadStringCompletedEventArgs != null)
+				result = uploadStringCompletedEventArgs.Result;
+			var downloadStringCompletedEventArgs = args as DownloadStringCompletedEventArgs;
+			if (downloadStringCompletedEventArgs != null)
+				result = downloadStringCompletedEventArgs.Result;
+			if (result == null) {
+				throw new InvalidOperationException("args should be either UploadStringCompletedEventArgs or DownloadStringCompletedEventArgs");
+			}
+			continuation(result, null);
 		}
 
 		void SetMobileServiceHeaders(WebClient client) {
