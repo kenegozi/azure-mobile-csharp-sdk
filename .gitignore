@@ -4,6 +4,7 @@ obj
 
 # vs
 *.suo
+*.csproj.user
 
 
 # nugets
