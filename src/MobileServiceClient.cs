@@ -39,6 +39,8 @@ namespace MobileServices.Sdk {
 		static MobileServiceClient() {
 			Serializer = new JsonSerializer();
 			Serializer.ContractResolver = new CamelCasePropertyNamesContractResolver();
+			Serializer.DateTimeZoneHandling = DateTimeZoneHandling.Utc;
+			Serializer.DateFormatHandling = DateFormatHandling.IsoDateFormat;//.DateTimeZoneHandling = DateTimeZoneHandling.Utc
 		}
 
 		public void Logout() {
@@ -69,7 +71,10 @@ namespace MobileServices.Sdk {
 		}
 
 		public void Read(string table, Action<JArray, Exception> continuation) {
-			Read(table, (ans, err) => {
+			Read(table, null, continuation);
+		}
+		public void Read(string table, MobileServiceQuery query, Action<JArray, Exception> continuation) {
+			Read(table, query, (ans, err) => {
 				if (err != null) {
 					continuation(null, err);
 					return;
@@ -82,7 +87,11 @@ namespace MobileServices.Sdk {
 		}
 
 		public void Read<TItem>(string table, Action<TItem[], Exception> continuation) {
-			Read(table, (ans, err) => {
+			Read(table, null, continuation);
+		}
+
+		public void Read<TItem>(string table, MobileServiceQuery query, Action<TItem[], Exception> continuation) {
+			Read(table, query, (ans, err) => {
 				if (err != null) {
 					continuation(null, err);
 					return;
@@ -133,8 +142,14 @@ namespace MobileServices.Sdk {
 			client.UploadStringAsync(new Uri(tableUrl), "DELETE", "");
 		}
 
-		void Read(string table, Action<string, Exception> continuation) {
+		void Read(string table, MobileServiceQuery query, Action<string, Exception> continuation) {
 			var tableUrl = serviceUrl + "tables/" + table;
+			if (query != null) {
+				var queryString = query.ToString();
+				if (queryString.Length > 0) {
+					tableUrl += "?" + queryString;
+				}
+			}
 			var client = new WebClient();
 			client.DownloadStringCompleted += (x, args) => {
 				if (args.Error != null) {
@@ -169,12 +184,13 @@ namespace MobileServices.Sdk {
 			foreach (var nullProperty in nullProperties) {
 				jobject.Remove(nullProperty.Name);
 			}
-
+			/*
 			foreach (JProperty prop in jobject.Properties()) {
 				if (prop.Value.Type == JTokenType.Date) {
 					prop.Value = prop.Value.ToObject<DateTime>().ToUniversalTime();
 				}
 			}
+			 * */
 			client.UploadStringAsync(new Uri(tableUrl), jobject.ToString());
 		}
 
