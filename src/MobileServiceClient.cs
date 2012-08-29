@@ -173,24 +173,15 @@ namespace MobileServices.Sdk {
 				continuation(args.Result, null);
 			};
 			SetMobileServiceHeaders(client);
-			var jobject = item as JObject;
+			var jobject = item as JObject ?? JObject.FromObject(item, Serializer);
 
-			if (jobject == null) {
-				jobject = JObject.FromObject(item, Serializer);
-			}
 			jobject.Remove("id");
 
 			var nullProperties = jobject.Properties().Where(p => p.Value.Type == JTokenType.Null).ToArray();
 			foreach (var nullProperty in nullProperties) {
 				jobject.Remove(nullProperty.Name);
 			}
-			/*
-			foreach (JProperty prop in jobject.Properties()) {
-				if (prop.Value.Type == JTokenType.Date) {
-					prop.Value = prop.Value.ToObject<DateTime>().ToUniversalTime();
-				}
-			}
-			 * */
+
 			client.UploadStringAsync(new Uri(tableUrl), jobject.ToString());
 		}
 
