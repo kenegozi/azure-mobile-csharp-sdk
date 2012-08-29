@@ -13,10 +13,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
-using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
@@ -25,7 +23,7 @@ namespace MobileServices.Sdk {
 	public class MobileServiceClient {
 		static readonly JsonSerializer Serializer;
 
-		string applicationKey;
+		readonly string applicationKey;
 		readonly string serviceUrl;
 
 		public string CurrentAuthToken { get; private set; }
@@ -128,7 +126,7 @@ namespace MobileServices.Sdk {
 		}
 
 		public void Delete(string table, object id, Action<Exception> continuation) {
-			var tableUrl = serviceUrl + "tables/" + table + "/" + id.ToString();
+			var tableUrl = serviceUrl + "tables/" + table + "/" + id;
 			var client = new WebClient();
 			client.UploadStringCompleted += (x, args) => {
 				if (args.Error != null) {
