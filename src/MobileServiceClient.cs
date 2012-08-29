@@ -22,8 +22,112 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 
 namespace MobileServices.Sdk {
+	public class MobileServiceTable<TItem> : MobileServiceTable {
+		public MobileServiceTable(MobileServiceClient client, string tableName)
+			: base(client, tableName) {
+		}
+
+		public void GetAll(Action<TItem[], Exception> continuation) {
+			Get(null, continuation);
+		}
+
+		public void Get(MobileServiceQuery query, Action<TItem[], Exception> continuation) {
+			Get(query, (arr, ex) => {
+				if (ex != null) {
+					continuation(null, ex);
+					return;
+				}
+
+				continuation(arr.ToObject<TItem[]>(MobileServiceClient.Serializer), null);
+			});
+		}
+
+		public void Insert(TItem item, Action<TItem, Exception> continuation) {
+			var jobject = JObject.FromObject(item, MobileServiceClient.Serializer);
+			Insert(jobject, (ans, err) => {
+				if (err != null) {
+					continuation(default(TItem), err);
+					return;
+				}
+
+				var results = JsonConvert.DeserializeObject<TItem>(ans);
+
+				continuation(results, null);
+			});
+		}
+
+	}
+
+	public class MobileServiceTable {
+		private readonly MobileServiceClient client;
+		private readonly string tableName;
+
+		public MobileServiceTable(MobileServiceClient client, string tableName) {
+			this.client = client;
+			this.tableName = tableName;
+		}
+
+		void JArrayHandler(string ans, Exception err, Action<JArray, Exception> continuation) {
+			if (err != null) {
+				continuation(null, err);
+				return;
+			}
+
+			var results = JArray.Parse(ans);
+
+			continuation(results, null);
+		}
+
+		public void GetAll(Action<JArray, Exception> continuation) {
+			Get(null, continuation);
+		}
+
+		public void Get(MobileServiceQuery query, Action<JArray, Exception> continuation) {
+			var tableUrl = "tables/" + tableName;
+			if (query != null) {
+				var queryString = query.ToString();
+				if (queryString.Length > 0) {
+					tableUrl += "?" + queryString;
+				}
+			}
+			client.Get(tableUrl, (res, exception) => JArrayHandler(res, exception, continuation));
+		}
+
+		public void Update(JObject updates, Action<Exception> continuation) {
+			JToken idToken;
+
+			if (updates.TryGetValue("id", out idToken) == false) {
+				throw new Exception("missing [id] field");
+			}
+
+			var id = idToken.Value<object>().ToString();
+			var tableUrl = "tables/" + tableName + "/" + id;
+
+			client.Patch(tableUrl, updates, (s, exception) => continuation(exception));
+		}
+
+		public void Delete(object id, Action<Exception> continuation) {
+			var tableUrl = "tables/" + tableName + "/" + id;
+			client.Delete(tableUrl, continuation);
+		}
+
+		public void Insert(JObject item, Action<string, Exception> continuation) {
+			var tableUrl = "tables/" + tableName;
+
+			item.Remove("id");
+
+			var nullProperties = item.Properties().Where(p => p.Value.Type == JTokenType.Null).ToArray();
+			foreach (var nullProperty in nullProperties) {
+				item.Remove(nullProperty.Name);
+			}
+
+			client.Post(tableUrl, item, continuation);
+		}
+
+	}
+
 	public class MobileServiceClient {
-		static readonly JsonSerializer Serializer;
+		internal static readonly JsonSerializer Serializer;
 
 		readonly string applicationKey;
 		readonly string serviceUrl;
@@ -70,154 +174,73 @@ namespace MobileServices.Sdk {
 			client.UploadStringAsync(new Uri(url), payload.ToString());
 		}
 
-		public void Read(string table, Action<JArray, Exception> continuation) {
-			Read(table, null, continuation);
-		}
-		public void Read(string table, MobileServiceQuery query, Action<JArray, Exception> continuation) {
-			Read(table, query, (ans, err) => {
-				if (err != null) {
-					continuation(null, err);
-					return;
-				}
-
-				var results = JArray.Parse(ans);
-
-				continuation(results, null);
-			});
+		public void Get(string relativeUrl, Action<string, Exception> continuation) {
+			Execute("GET", relativeUrl, string.Empty, continuation);
 		}
 
-		public void Read<TItem>(string table, Action<TItem[], Exception> continuation) {
-			Read(table, null, continuation);
+		public void Post(string relativeUrl, object payload, Action<string, Exception> continuation) {
+			Execute("POST", relativeUrl, payload, continuation);
 		}
 
-		public void Read<TItem>(string table, MobileServiceQuery query, Action<TItem[], Exception> continuation) {
-			Read(table, query, (ans, err) => {
-				if (err != null) {
-					continuation(null, err);
-					return;
-				}
-
-				var results = JsonConvert.DeserializeObject<TItem[]>(ans);
-
-				continuation(results, null);
-			});
+		public void Delete(string relativeUrl, Action<Exception> continuation) {
+			Execute("DELETE", relativeUrl, string.Empty, (s, err) => continuation(err));
 		}
 
-		public void Insert<TItem>(string table, TItem item, Action<TItem, Exception> continuation) {
-			Insert(table, item, (ans, err) => {
-				if (err != null) {
-					continuation(default(TItem), err);
-					return;
-				}
-
-				var results = JsonConvert.DeserializeObject<TItem>(ans);
-
-				continuation(results, null);
-			});
+		public void Patch(string relativeUrl, object payload, Action<string, Exception> continuation) {
+			Execute("PATCH", relativeUrl, payload, continuation);
 		}
 
-		public void Insert(string table, JObject item, Action<JObject, Exception> continuation) {
-			Insert(table, item, (ans, err) => {
-				if (err != null) {
-					continuation(null, err);
-					return;
-				}
-
-				continuation(JObject.Parse(ans), null);
-			});
-		}
-
-		public void Delete(string table, object id, Action<Exception> continuation) {
-			var tableUrl = serviceUrl + "tables/" + table + "/" + id;
+		void Execute(string method, string relativeUrl, object payload, Action<string, Exception> continuation) {
+			var endpointUrl = serviceUrl + relativeUrl;
 			var client = new WebClient();
-			client.UploadStringCompleted += (x, args) => {
-				if (args.Error != null) {
-					continuation(args.Error);
-					return;
-				}
-				continuation(null);
-			};
-
+			client.UploadStringCompleted += (x, args) =>
+				OperationCompleted(args.Result, args.Error, continuation);
+			client.DownloadStringCompleted += (x, args) =>
+				OperationCompleted(args.Result, args.Error, continuation);
 			SetMobileServiceHeaders(client);
-			client.UploadStringAsync(new Uri(tableUrl), "DELETE", "");
-		}
-
-		public void Update(string table, JObject updates, Action<Exception> continuation) {
-			JToken idToken;
-
-			if (updates.TryGetValue("id", out idToken) == false) {
-				throw new Exception("missing [id] field");
+			if (method == "GET") {
+				client.DownloadStringAsync(new Uri(endpointUrl));
+				return;
 			}
 
-			var id = idToken.Value<object>().ToString();
-			var tableUrl = serviceUrl + "tables/" + table + "/" + id;
-			var client = new WebClient();
-			client.UploadStringCompleted += (x, args) => {
-				if (args.Error != null) {
-					continuation(args.Error);
-					return;
-				}
-				continuation(null);
-			};
-
-			SetMobileServiceHeaders(client);
-			var payload = new StringBuilder();
-			using (var writer = new StringWriter(payload))
-				Serializer.Serialize(writer, updates);
-
-			client.UploadStringAsync(new Uri(tableUrl), "PATCH", payload.ToString());
-		}
-
-		void Read(string table, MobileServiceQuery query, Action<string, Exception> continuation) {
-			var tableUrl = serviceUrl + "tables/" + table;
-			if (query != null) {
-				var queryString = query.ToString();
-				if (queryString.Length > 0) {
-					tableUrl += "?" + queryString;
-				}
+			var payloadString = payload as string;
+			if (payloadString == null && payload != null) {
+				var buffer = new StringBuilder();
+				using (var writer = new StringWriter(buffer))
+					Serializer.Serialize(writer, payload);
+				payloadString = buffer.ToString();
 			}
-			var client = new WebClient();
-			client.DownloadStringCompleted += (x, args) => {
-				if (args.Error != null) {
-					continuation(null, args.Error);
-					return;
-				}
-				continuation(args.Result, null);
-			};
-			SetMobileServiceHeaders(client);
-			client.DownloadStringAsync(new Uri(tableUrl));
+			client.UploadStringAsync(new Uri(endpointUrl), method, payloadString);
 		}
 
-		void Insert(string table, object item, Action<string, Exception> continuation) {
-			var tableUrl = serviceUrl + "tables/" + table;
-			var client = new WebClient();
-			client.UploadStringCompleted += (x, args) => {
-				if (args.Error != null) {
-					continuation(null, args.Error);
-					return;
-				}
-				continuation(args.Result, null);
-			};
-			SetMobileServiceHeaders(client);
-			var jobject = item as JObject ?? JObject.FromObject(item, Serializer);
-
-			jobject.Remove("id");
-
-			var nullProperties = jobject.Properties().Where(p => p.Value.Type == JTokenType.Null).ToArray();
-			foreach (var nullProperty in nullProperties) {
-				jobject.Remove(nullProperty.Name);
+		void OperationCompleted(string result, Exception err, Action<string, Exception> continuation) {
+			if (err == null) {
+				continuation(result, null);
+				return;
 			}
-
-			client.UploadStringAsync(new Uri(tableUrl), jobject.ToString());
+			continuation(null, err);
 		}
 
-		private void SetMobileServiceHeaders(WebClient client) {
+		void SetMobileServiceHeaders(WebClient client) {
 			if (CurrentAuthToken != null) {
 				client.Headers["X-ZUMO-AUTH"] = CurrentAuthToken;
 			}
 			if (applicationKey != null) {
 				client.Headers["X-ZUMO-APPLICATION"] = applicationKey;
 			}
+		}
+
+		public MobileServiceTable GetTable(string tableName) {
+			return new MobileServiceTable(this, tableName);
+		}
+
+		public MobileServiceTable<TItem> GetTable<TItem>(string tableName) {
+			return new MobileServiceTable<TItem>(this, tableName);
+		}
+
+		public MobileServiceTable<TItem> GetTable<TItem>() {
+			var tableName = typeof(TItem).Name;
+			return GetTable<TItem>(tableName);
 		}
 	}
 
