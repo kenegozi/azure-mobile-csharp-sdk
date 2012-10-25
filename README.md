@@ -1,7 +1,9 @@
-azure-mobile-csharp-sdk
+azure-mobile-wp7-sdk
 =======================
 
-Experimental c# SDK for Azure Mobile Services that is platform agnostic
+This is all still very Experimental.
+
+This is a C# (CSharp) SDK for Azure Mobile Services for Windows Phone 7.5.
 
 In your entry class, or anywhere else visible (eg App.xaml.cs, Main() etc.):
 
