@@ -1,7 +1,9 @@
-azure-mobile-csharp-sdk
+azure-mobile-wp7-sdk
 =======================
 
-Experimental c# SDK for Azure Mobile Services that is platform agnostic
+This is all still very Experimental.
+
+This is a C# (CSharp) SDK for Azure Mobile Services for Windows Phone 7.5.
 
 In your entry class, or anywhere else visible (eg App.xaml.cs, Main() etc.):
 
@@ -85,10 +87,46 @@ Delete:
         }
     });
 
-Login to Azure Mobile Services with the AuthenticationToken returned  from LiveAuthClient or the LiveLoginButton's SessionChanged event:
+ 
 
-    App.MobileServiceClient.Login(e.Session.AuthenticationToken, (userId, err) => {
-       // do something with userId, perhaps call to LiveConnect for user details, etc.
-    });
+Login to Azure Mobile Services:
+
+Multi-auth Login is now supported ! (Microsoft Account, Facebook, Twitter & Google)
+This can be done in two ways: 
+ 
+1) Using LiveSDK for Microsoft accounts, and get the User Token in no time, 
+   OR AFTER the first time with step (2), and a saved Token, just use LoginInBackground() :
+
+            App.MobileServiceClient.LoginInBackground( AuthenticationToken, (userId, err) => {
+               // do something with userId ... 
+            });
+
+2) For the first time, we will need a web access (OAuth2.0) to get autherizationToken from 
+   the Providers. Implement a WebBrowser and a simple Grid with an Indeterminate ProgressBar running,
+   and use the WebAuthenticationBroker we built for WP7. for example, add this to your XAML:
+
+                <phone:WebBrowser Name="authorizationBrowser" Grid.RowSpan="2" IsScriptEnabled="True" Visibility="Collapsed" />
+
+                <Grid x:Name="loadingGrid" Grid.RowSpan="2" HorizontalAlignment="Stretch" Visibility="Collapsed" Background="#B9000000">
+                    <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                        <TextBlock Height="30" HorizontalAlignment="Center" Name="loadingText" Text="Loading..." VerticalAlignment="Center" Width="441" TextAlignment="Center" />
+                        <ProgressBar Height="4" HorizontalAlignment="Center" Name="loadingProgress" VerticalAlignment="Center" IsIndeterminate="True" HorizontalContentAlignment="Center" Width="400" />
+                    </StackPanel>
+                </Grid>
+
+then use LoginWithBrowser like this:
+
+            var provider = MobileServiceAuthenticationProvider.Facebook;
+            var broker = new WebAuthenticationBrokerStruct() { 
+                    authorizationBrowser = this.authorizationBrowser, 
+                    loadingGrid = this.loadingGrid, 
+                    dispacher = this.Dispatcher 
+            };
+            
+            App.MobileServiceClient.LoginWithBrowser(provider, broker, (userId, err) =>        
+                // do something with userId ... 
+            });
+
+Good Luck !
 
 Use, abuse, and report back !
